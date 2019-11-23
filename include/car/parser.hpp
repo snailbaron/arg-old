@@ -12,56 +12,73 @@
 
 namespace car {
 
+namespace {
+
+} // namespace
+
 class Parser {
 public:
-    bool parse(int argc, char* argv[]);
-
-    template <class Args>
-    bool parse(const Args& args)
+    template <class... Args>
+    Flag flag(const Args&... args)
     {
-        for (auto arg = args.begin(); arg != args.end(); ++arg) {
-            if (auto flag = _flags.find(*arg); flag != _flags.end()) {
-                if (auto ptr = flag->second.lock()) {
-                    ptr->raise();
-                }
-                continue;
-            }
-
-            if (auto option = _options.find(*arg); option != _options.end()) {
-                ++arg;
-                if (arg == args.end()) {
-                    _err << "no value for " << *arg << "\n";
-                    break;
-                }
-
-                if (auto ptr = option->second.lock()) {
-                    ptr->set(*arg);
-                }
-                continue;
-            }
-
-            if (auto subargs = splitMergedArgs(*arg); !subargs.empty()) {
-                // TODO: process all except the last one as flags; the last one as
-                // a flag or an option.
-            }
-
-            if (_argumentsRead < _arguments.size()) {
-                if (auto ptr = _arguments.at(_argumentsRead).lock()) {
-                    ptr->set(*arg);
-                }
-            } else {
-                _leftovers.push_back(*arg);
-            }
-            _argumentsRead++;
-        }
+        auto flagData = std::make_shared<FlagData>();
+        ((_flags[args] = flagData), ...);
+        return Flag{std::move(flagData)};
     }
+
+    template <class... Args>
+    MultiFlag multiFlag(const Args&... args)
+    {
+        auto multiFlagData = std::make_shared<MultiFlagData>();
+        ((_flags[args] = multiFlagData), ...);
+        return MultiFlag{std::move(multiFlagData)};
+    }
+
+    template <class T = std::string, class... Args>
+    Value<T> option(const Args&... args)
+    {
+        auto valueData = std::make_shared<ValueData<T>>();
+        ((_options[args] = valueData), ...);
+        return Value{std::move(valueData)};
+    }
+
+    template <class T = std::string, class... Args>
+    MultiValue<T> multiOption(const Args&... args)
+    {
+        auto multiValueData = std::make_shared<MultiValueData<T>>();
+        ((_options[args] = multiValueData), ...);
+        return MultiValue{std::move(multiValueData)};
+    }
+
+    template <class T = std::string, class... Args>
+    Value<T> argument(const Args&... args)
+    {
+        auto valueData = std::make_shared<ValueData<T>>();
+        ((_arguments[args] = valueData), ...);
+        return Value{std::move(valueData)};
+    }
+
+    template <class T = std::string, class... Args>
+    MultiValue<T> multiArgument(const Args&... args)
+    {
+        auto multiValueData = std::make_shared<MultiValueData<T>>();
+        ((_arguments[args] = multiValueData), ...);
+        return MultiValue{std::move(multiValueData)};
+    }
+
+    bool parse(int argc, char* argv[]);
+    bool parse(const std::vector<std::string>& args);
 
     void printUsage() const;
 
 private:
+    bool isValidFlagMerge(const std::string& flagMerge);
+
     std::ostream& _err = std::cerr;
 
     std::string _programName;
+    const std::string _flagPrefix = "-";
+
     std::map<std::string, std::weak_ptr<Flag>> _flags;
     std::map<std::string, std::weak_ptr<AbstractValue>> _options;
     std::vector<std::weak_ptr<AbstractValue>> _arguments;
