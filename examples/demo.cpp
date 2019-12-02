@@ -1,4 +1,4 @@
-#include <car.hpp>
+#include <arg.hpp>
 
 #include <istream>
 
@@ -14,13 +14,10 @@ std::istream& operator>>(std::istream& input, Point& point)
 
 int main(int argc, char* argv[])
 {
-    auto parser = car::Parser{};
+    auto parser = arg::Parser{};
 
-    auto optionalFlag = parser.flag("-f", "--optional-flag")
-        .help("optional flag");
-    auto requiredFlag = parser.flag("-r", "--required-flag")
-        .required()
-        .help("required flag");
+    auto flag = parser.flag("-f", "--flag")
+        .help("flag");
     auto stringOption = parser.option("-o", "--option")
         .help("string option");
     auto integerOption = parser.option<int>("-i", "--integer")

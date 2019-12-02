@@ -1,114 +1,187 @@
-#include <car/parser.hpp>
+#include <arg/parser.hpp>
 
+#include <cassert>
 #include <string_view>
 #include <vector>
 
-namespace car {
+namespace arg {
 
-bool Parser::parse(int argc, char* argv[])
-{
-    if (argc > 0) {
-        _programName = argv[0];
+namespace {
+
+struct KeyValue {
+    operator bool() const
+    {
+        return !key.empty() && !value.empty();
     }
 
-    std::vector<std::string_view> args;
-    for (int i = 1; i < argc; i++) {
-        args.push_back(argv[i]);
-    }
+    std::string key = "";
+    std::string value = "";
+};
 
-    return parse(args);
-}
-
-bool Parser::parse(const std::vector<std::string>& args)
+bool startsWith(const std::string& string, const std::string& prefix)
 {
-    for (auto arg = args.begin(); arg != args.end(); ++arg) {
-        if (auto flag = _flags.find(*arg); flag != _flags.end()) {
-            if (auto ptr = flag->second.lock()) {
-                ptr->raise();
-            }
-            continue;
-        }
-
-        if (auto option = _options.find(*arg); option != _options.end()) {
-            ++arg;
-            if (arg == args.end()) {
-                _err << "no value for " << option->first << "\n";
-                break;
-            }
-
-            if (auto ptr = option->second.lock()) {
-                ptr->set(*arg);
-            }
-            continue;
-        }
-
-        if (isValidFlagMerge(*arg)) {
-            auto flags = arg->substr(_flagPrefix.size());
-            for (size_t i = 0; i + 1 < flags.size(); i++) {
-                if (auto ptr = _flags.at(flags[i]).lock(); ptr) {
-                    ptr->raise();
-                }
-            }
-
-            if (auto f = _flags.find(_flagPrefix + flags.back());
-                    f != _flags.end()) {
-                if (auto ptr = f->second.lock()) {
-                    ptr->raise();
-                }
-            } else if (auto f = _options.find(_flagPrefix + flags.back());
-                    f != _options.end()) {
-                ++arg;
-                if (arg == args.end()) {
-                    _err << "no value for " << f->first << "\n";
-                    break;
-                }
-
-                if (auto ptr = f->second.lock()) {
-                    ptr->set(*arg);
-                }
-            }
-            continue;
-        }
-
-        if (_argumentsRead < _arguments.size()) {
-            if (auto ptr = _arguments.at(_argumentsRead).lock()) {
-                ptr->set(*arg);
-            }
-        } else {
-            _leftovers.push_back(*arg);
-        }
-        _argumentsRead++;
-
-        // TODO: check required:
-        // * all required options set
-        // * all required argument read (not less than required number of
-        //   arguments is read)
-    }
-}
-
-bool Parser::isValidFlagMerge(const std::string& flagMerge)
-{
-    if (flagMerge.substr(_flagPrefix.size()) != _flagPrefix) {
+    if (string.length() < prefix.length()) {
         return false;
     }
 
-    auto flags = flagMerge.substr(_flagPrefix.size());
+    for (size_t i = 0; i < prefix.length(); i++) {
+        if (string[i] != prefix[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string removePrefix(const std::string& string, const std::string& prefix)
+{
+    return string.substr(prefix.size());
+}
+
+} // namespace
+
+KeyValue splitKeyValue(
+    const std::string keyValueSeparator, const std::string& string)
+{
+    auto separatorPosition = string.find(keyValueSeparator);
+    if (separatorPosition != std::string::npos) {
+        return {
+            string.substr(0, separatorPosition),
+            string.substr(separatorPosition + keyValueSeparator.length())
+        };
+    } else {
+        return {};
+    }
+}
+
+std::vector<std::string> splitFlagMerge(
+    const std::string& flagMerge, const std::string& flagPrefix)
+{
+    if (startsWith(flagMerge, flagPrefix)) {
+        auto flagString = removePrefix(flagMerge, flagPrefix);
+        std::vector<std::string> flags;
+        for (const auto& flagLetter : flagString) {
+            flags.push_back(flagPrefix + flagLetter);
+        }
+        return flags;
+    } else {
+        return {};
+    }
+}
+
+void Parser::addFullName(const std::string& flag, const std::string& fullName)
+{
+    if (_fullNames.count(flag)) {
+        _err << "flag " << flag << " in " << fullName <<
+            " overrides " << _fullNames.at(flag) << "\n";
+    }
+    _fullNames[flag] = fullName;
+}
+
+bool Parser::raiseFlag(const std::string& flag)
+{
+    auto flagIt = _flagData.find(flag);
+    if (flagIt != _flagData.end()) {
+        auto& flagData = *flagIt->second;
+        if (flagData.value) {
+            // TODO
+            _err << "flag set multiple times: " << "\n";
+        }
+        flagData.value = true;
+        return true;
+    }
+
+    auto multiFlagIt = _multiFlagData.find(flag);
+    if (multiFlagIt != _multiFlagData.end()) {
+        auto& multiFlagData = *multiFlagIt->second;
+        multiFlagData.count++;
+        return true;
+    }
+
+    return false;
+}
+
+bool Parser::setOption(const std::string& flag, ArgumentStream& args)
+{
+    auto optionIt = _optionData.find(flag);
+    if (optionIt != _optionData.end()) {
+        auto& optionData = *optionIt->second;
+        if (optionData.value) {
+            // TODO
+            _err << "option set multiple times: " << "\n";
+        }
+        optionData.set(args.next());
+        return true;
+    }
+
+    auto multiOptionIt = _multiOptionData.find(flag);
+    if (multiOptionIt != _multiOptionData.end()) {
+        auto& multiOptionData = *multiOptionIt->second;
+        multiOptionData.add(args.next());
+        return true;
+    }
+
+    return false;
+}
+
+bool Parser::parse(ArgumentStream& args)
+{
+    for (auto arg = args.next(); !args.empty(); arg = args.next()) {
+        if (raiseFlag(arg) || setOption(arg, args) {
+            continue;
+        }
+
+        auto unmergedFlags = splitFlagMerge(_flagPrefix, arg);
+        if (isFlagMerge(unmergedFlags)) {
+            for (size_t i = 0; i + 1 < unmergedFlags.size(); i++) {
+                raiseFlag(unmergedFlags[i]);
+            }
+
+            const auto& lastFlag = unmergedFlags.back();
+            raiseFlag(lastFlag) || setOption(lastFlag, args);
+
+            continue;
+        }
+
+        auto keyValue = splitKeyValue(_keyValueSeparator, arg);
+        if (keyValue && setOption(arg, args)) {
+            continue;
+        }
+
+        if (_position < _positionalData.size()) {
+            _positionalData.at(_position++)->set(arg);
+            continue;
+        }
+
+        if (_captor) {
+            _captor->add(arg);
+            continue;
+        }
+
+        _leftovers.push_back(std::move(arg));
+    }
+}
+
+bool Parser::isFlagMerge(const std::vector<std::string>& flags)
+{
     if (flags.empty()) {
         return false;
     }
 
     for (size_t i = 0; i + 1 < flags.size(); i++) {
-        if (!_flags.count(_flagPrefix + flags[i])) {
+        if (!_flagData.count(flags[i]) && !_multiFlagData.count(flags[i])) {
             return false;
         }
     }
 
-    if (!_flags.count(_flagPrefix + flags.back()) &&
-            !_options.count(_flagPrefix + flags.back())) {
+    if (!_flagData.count(flags.back()) &&
+            !_optionData.count(flags.back()) &&
+            !_optionData.count(flags.back()) &&
+            !_multiOptionData.count(flags.back())) {
         return false;
     }
 
     return true;
 }
 
-} // namespace car
+} // namespace arg

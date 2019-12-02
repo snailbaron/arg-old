@@ -1,2 +1,2 @@
-link_libraries(car)
-add_executable(example example.cpp)
+link_libraries(arg)
+add_executable(demo demo.cpp)
