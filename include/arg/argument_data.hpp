@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arg/argument_stream.hpp>
+#include <arg/util.hpp>
 
 #include <cstddef>
 #include <sstream>
@@ -11,60 +12,53 @@
 
 namespace arg {
 
-template <class T>
-T parseValue(const std::string& string)
-{
-    // TODO: parse strings with spaces
-    T value;
-    std::istringstream{string} >> value;
-    return value;
-}
+struct ArgumentData {
+    virtual ~ArgumentData() {}
 
-struct FlagData {
+    std::string name;
+    std::string help;
+    std::string metavar;
+};
+
+struct FlagData final : ArgumentData {
     bool value = false;
     std::string help;
 };
 
-struct MultiFlagData {
+struct MultiFlagData final : ArgumentData {
     size_t count = 0;
     std::string help;
 };
 
-struct ValueData {
+struct ValueData : ArgumentData {
+    virtual ~ValueData() {}
     virtual void set(const std::string& valueString) = 0;
-    virtual bool isSet() const = 0;
 
     bool required = false;
     std::string help;
 };
 
 template <class T>
-struct TypedValueData : ValueData {
+struct TypedValueData final : ValueData {
     void set(const std::string& valueString) override
     {
-        value = parseValue<T>(valueString);
-    }
-
-    bool isSet() const override
-    {
-        return value;
+        value = util::parseValue<T>(valueString);
     }
 
     std::optional<T> value;
 };
 
-struct MultiValueData {
+struct MultiValueData : ArgumentData {
     virtual void add(const std::string& valueString) = 0;
 
-    bool required = false;
     std::string help;
 };
 
 template <class T>
-struct TypedMultiValueData : MultiValueData {
+struct TypedMultiValueData final : MultiValueData {
     void add(const std::string& valueString) override
     {
-        values.push_back(parseValue<T>(valueString));
+        values.push_back(util::parseValue<T>(valueString));
     }
 
     std::vector<T> values;

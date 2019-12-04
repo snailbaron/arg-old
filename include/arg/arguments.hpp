@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arg/data.hpp>
+#include <arg/argument_data.hpp>
 
 #include <memory>
 #include <sstream>
@@ -26,6 +26,12 @@ public:
         return **this;
     }
 
+    Flag help(std::string helpMessage)
+    {
+        _data->help = std::move(helpMessage);
+        return *this;
+    }
+
 private:
     std::shared_ptr<FlagData> _data;
 };
@@ -44,6 +50,12 @@ public:
     operator std::size_t() const
     {
         return **this;
+    }
+
+    MultiFlag help(std::string helpMessage)
+    {
+        _data->help = std::move(helpMessage);
+        return *this;
     }
 
 private:
@@ -73,6 +85,12 @@ public:
         return *this;
     }
 
+    Value help(std::string helpMessage)
+    {
+        _data->help = std::move(helpMessage);
+        return *this;
+    }
+
 private:
     std::shared_ptr<TypedValueData<T>> _data;
 };
@@ -97,6 +115,12 @@ public:
     MultiValue required()
     {
         _data->required = true;
+        return *this;
+    }
+
+    MultiValue help(std::string helpMessage)
+    {
+        _data->help = std::move(helpMessage);
         return *this;
     }
 

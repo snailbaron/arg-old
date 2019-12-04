@@ -1,8 +1,8 @@
 #pragma once
 
+#include <arg/argument_data.hpp>
 #include <arg/argument_stream.hpp>
 #include <arg/arguments.hpp>
-#include <arg/data.hpp>
 
 #include <iostream>
 #include <map>
@@ -10,99 +10,80 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <tuple>
+#include <variant>
+#include <type_traits>
 
 namespace arg {
 
-std::string join(
-    const std::vector<std::string>& strings, const std::string& separator)
-{
-    std::ostringstream output;
-    if (!strings.empty()) {
-        output << strings.front();
-        for (size_t i = 1; i < strings.size(); i++) {
-            output << separator << strings[i];
-        }
-    }
-    return output.str();
-}
-
-class ArgumentStreamParser {
+class Parser {
 public:
-    template <class... Args>
-    Flag flag(const Args&... args)
+    template <class... Ts>
+    Flag flag(Ts&&... args)
     {
-        std::vector<std::string> flags{args...};
-        auto fullName = join(flags, ", ");
-        auto flagData = std::make_shared<FlagData>();
-
-        for (const auto& flag : flags) {
-            addFullName(flag, fullName);
-            _flagData[flag] = flagData;
-        }
-
-        return Flag{flagData};
+        return addArgumentData<Flag, FlagData>(std::forward<Ts>(args)...);
     }
 
-    template <class... Args>
-    MultiFlag multiFlag(const Args&... args)
+    template <class... Ts>
+    MultiFlag multiFlag(const Ts&... args)
     {
-        std::vector<std::string> flags{args...};
-        auto fullName = join(flags, ", ");
-        auto multiFlagData = std::make_shared<MultiFlagData>();
-
-        for (const auto& flag : flags) {
-            addFullName(flag, fullName);
-            _multiFlagData[flag] = multiFlagData;
-        }
-
-        return MultiFlag{multiFlagData};
+        return addArgumentData<MultiFlag, MultiFlagData>(
+            std::forward<Ts>(args)...);
     }
 
-    template <class T = std::string, class... Args>
-    Value<T> option(const Args&... args)
+    template <class T = std::string, class... Ts>
+    Value<T> option(const Ts&... args)
     {
-        std::vector<std::string> flags{args...};
-        auto fullName = join(flags, ", ");
-        auto valueData = std::make_shared<ValueData<T>>();
-
-        for (const auto& flag : flags) {
-            addFullName(flag, fullName);
-            _optionData[flag] = valueData;
-        }
-
-        return Value{std::move(valueData)};
+        return addArgumentData<Value<T>, TypedValueData<T>>(
+            std::forward<Ts>(args)...);
     }
 
-    template <class T = std::string, class... Args>
-    MultiValue<T> multiOption(const Args&... args)
+    template <class T = std::string, class... Ts>
+    MultiValue<T> multiOption(const Ts&... args)
     {
-        auto multiValueData = std::make_shared<MultiValueData<T>>();
-        ((_options[args] = multiValueData), ...);
-        return MultiValue{std::move(multiValueData)};
+        return addArgumentData<MultiValue<T>, TypedValueData<T>>(
+            std::forward<Ts>(args)...);
     }
 
-    template <class T = std::string, class... Args>
-    Value<T> argument(const Args&... args)
+    template <class T = std::string>
+    Value<T> argument()
     {
-        auto valueData = std::make_shared<ValueData<T>>();
+        // TODO: check that there are no required values after optional at the
+        // moment of parsing
 
-        ((_arguments[args] = valueData), ...);
-        return Value{std::move(valueData)};
+        auto valueData = std::make_shared<TypedValueData<T>>();
+        _positionalData.push_back(valueData);
+        return {valueData};
     }
 
-    template <class T = std::string, class... Args>
-    MultiValue<T> multiArgument(const Args&... args)
+    template <class T = std::string, class... Ts>
+    MultiValue<T> multiArgument(const Ts&... args)
     {
-        auto multiValueData = std::make_shared<MultiValueData<T>>();
-        ((_arguments[args] = multiValueData), ...);
-        return MultiValue{std::move(multiValueData)};
+        // TODO: check that there is no more than one multi-argument
+
+        _captor = std::make_shared<TypedMultiValueData<T>>();
+        return {_captor};
     }
 
     void parse(int argc, char* argv[]);
 
 private:
-    void addFullName(const std::string& flag, const std::string& fullName);
-    bool isValidFlagMerge(const std::string& flagMerge);
+    template <class ArgumentType, class DataType, class... Ts>
+    ArgumentType addArgumentData(Ts&&... args)
+    {
+        static_assert(
+            std::conjunction<std::is_same<Ts, std::string>...>(),
+            "all flags must be strings");
+
+        auto data = std::make_shared<DataType>();
+        // TODO: check for duplicates in args
+        // TODO: check for duplicates with other keys
+        data->name = util::join(", ", std::forward<Ts>(args)...);
+        ((_keyData[args] = data), ...);
+
+        return {data};
+    }
+
     bool parseFlag(const std::string& arg);
     bool parseMultiFlag(const std::string& arg);
 
@@ -113,14 +94,64 @@ private:
 
     std::map<std::string, std::string> _fullNames;
 
-    std::map<std::string, std::shared_ptr<FlagData>> _flagData;
-    std::map<std::string, std::shared_ptr<MultiFlagData>> _multiFlagData;
-    std::map<std::string, std::shared_ptr<ValueData>> _optionData;
-    std::map<std::string, std::shared_ptr<MultiValueData>> _multiOptionData;
+    std::map<
+        std::string,
+        std::variant<
+            std::shared_ptr<FlagData>,
+            std::shared_ptr<MultiFlagData>,
+            std::shared_ptr<ValueData>,
+            std::shared_ptr<MultiValueData>
+        >
+    > _keyData;
+
     std::vector<std::shared_ptr<ValueData>> _positionalData;
     size_t _position = 0;
+
     std::shared_ptr<MultiValueData> _captor;
     std::vector<std::string> _leftovers;
 };
+
+extern Parser globalParser;
+
+template <class... Ts>
+Flag flag(Ts&&... args)
+{
+    return globalParser.flag(std::forward<Ts>(args)...);
+}
+
+template <class... Ts>
+MultiFlag multiFlag(Ts&&... args)
+{
+    return globalParser.multiFlag(std::forward<Ts>(args)...);
+}
+
+template <class T = std::string, class... Ts>
+Value<T> option(Ts&&... args)
+{
+    return globalParser.option<T>(std::forward<Ts>(args)...);
+}
+
+template <class T = std::string, class... Ts>
+MultiValue<T> multiOption(Ts&&... args)
+{
+    return globalParser.multiOption<T>(std::forward<Ts>(args)...);
+}
+
+template <class T = std::string, class... Ts>
+Value<T> argument(Ts&&... args)
+{
+    return globalParser.argument<T>(std::forward<Ts>(args)...);
+}
+
+template <class T = std::string, class... Ts>
+Value<T> multiArgument(Ts&&... args)
+{
+    return globalParser.multiArgument<T>(std::forward<Ts>(args)...);
+}
+
+void parse(int argc, char* argv[])
+{
+    globalParser.parse(argc, argv);
+}
 
 } // namespace arg

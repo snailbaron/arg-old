@@ -1,30 +1,23 @@
 #include <arg.hpp>
 
-#include <istream>
-
-struct Point {
-    int x;
-    int y;
-};
-
-std::istream& operator>>(std::istream& input, Point& point)
-{
-    return input >> point.x >> point.y;
-}
-
 int main(int argc, char* argv[])
 {
-    auto parser = arg::Parser{};
-
-    auto flag = parser.flag("-f", "--flag")
+    arg::help("-h", "--help");
+    auto flag = arg::flag("-f", "--flag")
         .help("flag");
-    auto stringOption = parser.option("-o", "--option")
+    auto multiFlag = arg::multiFlag("-v", "--verbose")
+        .help("flag that can be used multiple times");
+    auto stringOption = arg::option("-o", "--option")
         .help("string option");
-    auto integerOption = parser.option<int>("-i", "--integer")
+    auto integerOption = arg::option<int>("-i", "--integer")
         .help("integer option");
-    auto requiredParameter = parser.option<Point>("-p", "--point")
+    auto requiredParameter = arg::option<float>("-p", "--point")
         .required()
         .help("required point");
-
-    parser.parse(argc, argv);
+    auto p1 = arg::argument<int>()
+        .required()
+        .help("positional argument");
+    auto p2 = arg::argument<int>()
+        .help("the rest of positional arguments");
+    arg::parse(argc, argv);
 }

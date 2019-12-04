@@ -1,4 +1,5 @@
 #include <arg/parser.hpp>
+#include <arg/util.hpp>
 
 #include <cassert>
 #include <string_view>
@@ -6,59 +7,11 @@
 
 namespace arg {
 
-namespace {
-
-struct KeyValue {
-    operator bool() const
-    {
-        return !key.empty() && !value.empty();
-    }
-
-    std::string key = "";
-    std::string value = "";
-};
-
-bool startsWith(const std::string& string, const std::string& prefix)
-{
-    if (string.length() < prefix.length()) {
-        return false;
-    }
-
-    for (size_t i = 0; i < prefix.length(); i++) {
-        if (string[i] != prefix[i]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-std::string removePrefix(const std::string& string, const std::string& prefix)
-{
-    return string.substr(prefix.size());
-}
-
-} // namespace
-
-KeyValue splitKeyValue(
-    const std::string keyValueSeparator, const std::string& string)
-{
-    auto separatorPosition = string.find(keyValueSeparator);
-    if (separatorPosition != std::string::npos) {
-        return {
-            string.substr(0, separatorPosition),
-            string.substr(separatorPosition + keyValueSeparator.length())
-        };
-    } else {
-        return {};
-    }
-}
-
 std::vector<std::string> splitFlagMerge(
     const std::string& flagMerge, const std::string& flagPrefix)
 {
-    if (startsWith(flagMerge, flagPrefix)) {
-        auto flagString = removePrefix(flagMerge, flagPrefix);
+    if (util::startsWith(flagMerge, flagPrefix)) {
+        auto flagString = util::removePrefix(flagMerge, flagPrefix);
         std::vector<std::string> flags;
         for (const auto& flagLetter : flagString) {
             flags.push_back(flagPrefix + flagLetter);
@@ -67,15 +20,6 @@ std::vector<std::string> splitFlagMerge(
     } else {
         return {};
     }
-}
-
-void Parser::addFullName(const std::string& flag, const std::string& fullName)
-{
-    if (_fullNames.count(flag)) {
-        _err << "flag " << flag << " in " << fullName <<
-            " overrides " << _fullNames.at(flag) << "\n";
-    }
-    _fullNames[flag] = fullName;
 }
 
 bool Parser::raiseFlag(const std::string& flag)
