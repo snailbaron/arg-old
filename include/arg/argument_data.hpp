@@ -14,6 +14,8 @@ namespace arg {
 
 struct ArgumentData {
     virtual ~ArgumentData() {}
+    virtual void parse(ArgumentStream&, std::ostream& error) = 0;
+    virtual bool needsArguments() const = 0;
 
     std::string name;
     std::string help;
@@ -21,44 +23,70 @@ struct ArgumentData {
 };
 
 struct FlagData final : ArgumentData {
+    void parse(ArgumentStream&, std::ostream& error) override
+    {
+        if (value) {
+            error << "flag set multiple times: " << name << "\n";
+        }
+        value = true;
+    }
+
+    bool needsArguments() const override
+    {
+        return false;
+    }
+
     bool value = false;
-    std::string help;
 };
 
 struct MultiFlagData final : ArgumentData {
+    void parse(ArgumentStream&, std::ostream&) override
+    {
+        count++;
+    }
+
+    bool needsArguments() const override
+    {
+        return false;
+    }
+
     size_t count = 0;
-    std::string help;
-};
-
-struct ValueData : ArgumentData {
-    virtual ~ValueData() {}
-    virtual void set(const std::string& valueString) = 0;
-
-    bool required = false;
-    std::string help;
 };
 
 template <class T>
-struct TypedValueData final : ValueData {
-    void set(const std::string& valueString) override
+struct ValueData final : ArgumentData {
+    void parse(ArgumentStream& stream, std::ostream& error) override
     {
-        value = util::parseValue<T>(valueString);
+        if (stream.empty()) {
+            error << "no value for argument: " << name << "\n";
+            return;
+        }
+        value = util::parseValue<T>(stream.pop());
     }
 
+    bool needsArguments() const override
+    {
+        return true;
+    }
+
+    bool required = false;
     std::optional<T> value;
 };
 
-struct MultiValueData : ArgumentData {
-    virtual void add(const std::string& valueString) = 0;
-
-    std::string help;
-};
-
 template <class T>
-struct TypedMultiValueData final : MultiValueData {
-    void add(const std::string& valueString) override
+struct MultiValueData final : ArgumentData {
+    void parse(ArgumentStream& stream, std::ostream& error) override
     {
-        values.push_back(util::parseValue<T>(valueString));
+        if (stream.empty()) {
+            error << "no value for argument: " << name << "\n";
+            return;
+        }
+        values.push_back(util::parseValue<T>(stream.pop()));
+    }
+
+    bool needsArguments() const override
+    {
+        return true;
     }
 
     std::vector<T> values;

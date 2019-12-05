@@ -36,4 +36,19 @@ KeyValue splitKeyValue(
     }
 }
 
+std::vector<std::string> splitFlagMerge(
+    const std::string& flagMerge, const std::string& flagPrefix)
+{
+    if (util::startsWith(flagMerge, flagPrefix)) {
+        auto flagString = util::removePrefix(flagMerge, flagPrefix);
+        std::vector<std::string> flags;
+        for (const auto& flagLetter : flagString) {
+            flags.push_back(flagPrefix + flagLetter);
+        }
+        return flags;
+    } else {
+        return {};
+    }
+}
+
 } // namespace arg::util

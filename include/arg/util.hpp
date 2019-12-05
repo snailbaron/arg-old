@@ -48,4 +48,7 @@ std::string join(const std::string& separator, Ts&&... args)
     return output.str();
 }
 
+std::vector<std::string> splitFlagMerge(
+    const std::string& flagMerge, const std::string& flagPrefix);
+
 } // namespace arg::util

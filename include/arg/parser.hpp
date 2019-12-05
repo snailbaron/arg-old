@@ -34,14 +34,14 @@ public:
     template <class T = std::string, class... Ts>
     Value<T> option(const Ts&... args)
     {
-        return addArgumentData<Value<T>, TypedValueData<T>>(
+        return addArgumentData<Value<T>, ValueData<T>>(
             std::forward<Ts>(args)...);
     }
 
     template <class T = std::string, class... Ts>
     MultiValue<T> multiOption(const Ts&... args)
     {
-        return addArgumentData<MultiValue<T>, TypedValueData<T>>(
+        return addArgumentData<MultiValue<T>, ValueData<T>>(
             std::forward<Ts>(args)...);
     }
 
@@ -51,7 +51,7 @@ public:
         // TODO: check that there are no required values after optional at the
         // moment of parsing
 
-        auto valueData = std::make_shared<TypedValueData<T>>();
+        auto valueData = std::make_shared<ValueData<T>>();
         _positionalData.push_back(valueData);
         return {valueData};
     }
@@ -61,7 +61,7 @@ public:
     {
         // TODO: check that there is no more than one multi-argument
 
-        _captor = std::make_shared<TypedMultiValueData<T>>();
+        _captor = std::make_shared<MultiValueData<T>>();
         return {_captor};
     }
 
@@ -84,30 +84,19 @@ private:
         return {data};
     }
 
-    bool parseFlag(const std::string& arg);
-    bool parseMultiFlag(const std::string& arg);
+    bool parse(ArgumentStream& args);
+    bool isFlagMerge(const std::vector<std::string>& flags) const;
 
     std::ostream& _err = std::cerr;
 
     std::string _programName;
-    const std::string _flagPrefix = "-";
+    std::string _flagPrefix = "-";
+    std::string _keyValueSeparator = "=";
 
-    std::map<std::string, std::string> _fullNames;
-
-    std::map<
-        std::string,
-        std::variant<
-            std::shared_ptr<FlagData>,
-            std::shared_ptr<MultiFlagData>,
-            std::shared_ptr<ValueData>,
-            std::shared_ptr<MultiValueData>
-        >
-    > _keyData;
-
-    std::vector<std::shared_ptr<ValueData>> _positionalData;
+    std::map<std::string, std::shared_ptr<ArgumentData>> _keyData;
+    std::vector<std::shared_ptr<ArgumentData>> _positionalData;
     size_t _position = 0;
-
-    std::shared_ptr<MultiValueData> _captor;
+    std::shared_ptr<ArgumentData> _captor;
     std::vector<std::string> _leftovers;
 };
 
