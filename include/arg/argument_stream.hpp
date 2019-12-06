@@ -1,11 +1,28 @@
 #pragma once
 
+#include <algorithm>
+#include <initializer_list>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
 
 class ArgumentStream {
 public:
+    ArgumentStream(std::vector<std::string> args)
+        : _args(std::move(args))
+    {
+        std::reverse(_args.begin(), _args.end());
+    }
+
+    template <class Container = std::initializer_list<std::string>>
+    ArgumentStream(const Container& container)
+    {
+        std::move(
+            container.begin(), container.end(), std::back_inserter(_args));
+        std::reverse(_args.begin(), _args.end());
+    }
+
     const std::string& front() const
     {
         return _args.back();

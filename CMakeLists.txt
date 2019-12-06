@@ -11,9 +11,7 @@ else()
     add_compile_options(-Wall -Wextra -pedantic)
 endif()
 
-add_library(arg
-    src/parser.cpp
-)
-target_include_directories(arg PUBLIC include)
+add_library(arg INTERFACE)
+target_include_directories(arg INTERFACE include)
 
 add_subdirectory(examples)
