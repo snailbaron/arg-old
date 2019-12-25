@@ -18,9 +18,10 @@ struct ArgumentData {
     virtual bool needsArguments() const { return false; }
     virtual bool multi() const { return false; }
 
-    std::string name;
+    std::string fullName;
+    std::string shortName;
     std::string help;
-    std::string metavar;
+    std::string metavar = "VALUE";
     bool required = false;
 };
 
@@ -30,7 +31,7 @@ public:
         void parse(ArgumentStream&, Errors& error) override
         {
             if (value) {
-                error << "flag set multiple times: " << name << "\n";
+                error << "flag set multiple times: " << fullName << "\n";
             }
             value = true;
         }
@@ -108,7 +109,7 @@ public:
         void parse(ArgumentStream& stream, Errors& error) override
         {
             if (stream.empty()) {
-                error << "no value for argument: " << name << "\n";
+                error << "no value for argument: " << fullName << "\n";
                 return;
             }
             value = util::parseValue<T>(stream.pop());
@@ -122,7 +123,7 @@ public:
         std::optional<T> value;
     };
 
-    Value(std::shared_ptr<Data>&& data)
+    Value(std::shared_ptr<Data> data)
         : _data(std::move(data))
     { }
 
@@ -159,7 +160,7 @@ public:
         void parse(ArgumentStream& stream, Errors& error) override
         {
             if (stream.empty()) {
-                error << "no value for argument: " << name << "\n";
+                error << "no value for argument: " << fullName << "\n";
                 return;
             }
             values.push_back(util::parseValue<T>(stream.pop()));
@@ -178,7 +179,7 @@ public:
         std::vector<T> values;
     };
 
-    MultiValue(std::shared_ptr<Data>&& data)
+    MultiValue(std::shared_ptr<Data> data)
         : _data(std::move(data))
     { }
 

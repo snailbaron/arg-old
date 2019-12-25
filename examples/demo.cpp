@@ -17,7 +17,7 @@ int main(int argc, char* argv[])
     auto p1 = arg::argument<int>()
         .required()
         .help("positional argument");
-    auto p2 = arg::argument<int>()
+    auto p2 = arg::multiArgument<int>()
         .help("the rest of positional arguments");
     arg::parse(argc, argv);
 }

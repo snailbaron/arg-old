@@ -6,6 +6,7 @@
 #include <arg/util.hpp>
 
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -28,27 +29,27 @@ public:
     }
 
     template <class... Flags>
-    MultiFlag multiFlag(const Flags&... args)
+    MultiFlag multiFlag(Flags&&... args)
     {
-        return addArgumentData<MultiFlag>(std::forward<Flags>(args)...);
+        return addKeyArgument<MultiFlag>(std::forward<Flags>(args)...);
     }
 
     template <class T = std::string, class... Flags>
-    Value<T> option(const Flags&... args)
+    Value<T> option(Flags&&... args)
     {
-        return addArgumentData<Value<T>>(std::forward<Flags>(args)...);
+        return addKeyArgument<Value<T>>(std::forward<Flags>(args)...);
     }
 
     template <class T = std::string, class... Flags>
-    MultiValue<T> multiOption(const Flags&... args)
+    MultiValue<T> multiOption(Flags&&... args)
     {
-        return addArgumentData<MultiValue<T>>(std::forward<Flags>(args)...);
+        return addKeyArgument<MultiValue<T>>(std::forward<Flags>(args)...);
     }
 
     template <class T = std::string>
     Value<T> argument()
     {
-        auto valueData = std::make_shared<Value<T>::Data>();
+        auto valueData = std::make_shared<typename Value<T>::Data>();
         _positionalData.push_back(valueData);
         return {valueData};
     }
@@ -59,8 +60,9 @@ public:
         if (_captor) {
             _err << "multi-argument is created multiple times\n";
         }
-        _captor = std::make_shared<MultiValue<T>::Data>();
-        return {_captor};
+        auto ptr = std::make_shared<typename MultiValue<T>::Data>();
+        _captor = ptr;
+        return {ptr};
     }
 
     template <class... Flags>
@@ -106,22 +108,26 @@ private:
             "all flags must be convertible to strings");
         std::vector<std::string> flagVector{std::forward<Flags>(flags)...};
 
-        auto data = std::make_shared<ArgumentType::Data>();
-        data->name = util::join(", ", flagVector);
+        auto data = std::make_shared<typename ArgumentType::Data>();
+        data->fullName = util::join(", ", flagVector);
+        data->shortName = flagVector.front();
+
+        _keyDataOrdered.push_back(data);
+
         for (const auto& flag : flagVector) {
             if (_keyData.count(flag)) {
                 _err << "flag '" << flag << "' is used multiple times\n";
             }
             _keyData[flag] = data;
-            _keyDataOrdered.push_back(data);
         }
+
         return {data};
     }
 
     void printUsage() const
     {
         auto printOption = [this] (const auto& option) {
-            *_out << option->name;
+            *_out << option->shortName;
             if (option->needsArguments()) {
                 *_out << " " << option->metavar;
             }
@@ -160,21 +166,39 @@ private:
 
         *_out << "\n";
 
+        size_t maxNameLength = 0;
         for (const auto& option : _keyDataOrdered) {
-            *_out << option->name << " : " << option->help << "\n";
+            if (option->fullName.size() > maxNameLength) {
+                maxNameLength = option->fullName.size();
+            }
         }
         for (const auto& arg : _positionalData) {
-            *_out << arg->name << " : " << arg->help << "\n";
+            if (arg->fullName.size() > maxNameLength) {
+                maxNameLength = arg->fullName.size();
+            }
+        }
+
+        for (const auto& option : _keyDataOrdered) {
+            *_out << "  " <<
+                std::left << std::setw(maxNameLength) << option->fullName <<
+                "  " << option->help << "\n";
+        }
+        for (const auto& arg : _positionalData) {
+            *_out << "  " <<
+                std::left << std::setw(maxNameLength) << arg->metavar <<
+                "  " << arg->help << "\n";
         }
         if (_captor) {
-            *_out << _captor->name << " : " << _captor->help << "\n";
+            *_out << "  " <<
+                std::left << std::setw(maxNameLength) << _captor->metavar <<
+                "  " << _captor->help << "\n";
         }
     }
 
     void parse(ArgumentStream args)
     {
-        // TODO: check that there are no required values after optional at the
-        // moment of parsing
+        // TODO: check that there are no required values after optional ones at
+        // the moment of parsing
 
         while (!args.empty()) {
             if (_helpFlags.count(args.front())) {
@@ -261,7 +285,7 @@ private:
     std::vector<std::string> _leftovers;
 };
 
-extern Parser globalParser;
+Parser globalParser;
 
 template <class... Ts>
 Flag flag(Ts&&... args)
@@ -294,9 +318,15 @@ Value<T> argument(Ts&&... args)
 }
 
 template <class T = std::string, class... Ts>
-Value<T> multiArgument(Ts&&... args)
+MultiValue<T> multiArgument(Ts&&... args)
 {
     return globalParser.multiArgument<T>(std::forward<Ts>(args)...);
+}
+
+template <class... Flags>
+void help(Flags&&... flags)
+{
+    globalParser.help(std::forward<Flags>(flags)...);
 }
 
 void parse(int argc, char* argv[])
