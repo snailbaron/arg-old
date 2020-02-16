@@ -7,15 +7,6 @@
 
 namespace arg::util {
 
-template <class T>
-T parseValue(const std::string& string)
-{
-    // TODO: parse strings with spaces
-    T value;
-    std::istringstream{string} >> value;
-    return value;
-}
-
 inline bool startsWith(const std::string& string, const std::string& prefix)
 {
     if (string.length() < prefix.length()) {

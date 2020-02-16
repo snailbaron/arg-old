@@ -1,206 +1,160 @@
 #pragma once
 
-#include <arg/argument_stream.hpp>
 #include <arg/errors.hpp>
 #include <arg/util.hpp>
 
 #include <memory>
+#include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace arg {
 
-struct ArgumentData {
-    virtual ~ArgumentData() {}
-    virtual void parse(ArgumentStream&, Errors& error) = 0;
-    virtual bool needsArguments() const { return false; }
-    virtual bool multi() const { return false; }
-
-    std::string fullName;
-    std::string shortName;
-    std::string help;
-    std::string metavar = "VALUE";
-    bool required = false;
-};
-
-class Flag {
-public:
-    struct Data final : ArgumentData {
-        void parse(ArgumentStream&, Errors& error) override
-        {
-            if (value) {
-                error << "flag set multiple times: " << fullName << "\n";
-            }
-            value = true;
-        }
-
-        bool value = false;
-    };
-
-    Flag(const std::shared_ptr<Data>& data)
-        : _data(data)
-    { }
-
-    bool operator*() const
-    {
-        return _data->value;
-    }
-
-    operator bool() const
-    {
-        return **this;
-    }
-
-    Flag help(std::string helpMessage)
-    {
-        _data->help = std::move(helpMessage);
-        return *this;
-    }
-
-private:
-    std::shared_ptr<Data> _data;
-};
-
-class MultiFlag {
-public:
-    struct Data final : ArgumentData {
-        void parse(ArgumentStream&, Errors&) override
-        {
-            count++;
-        }
-
-        bool multi() const override {
-            return true;
-        }
-
-        size_t count = 0;
-    };
-
-    MultiFlag(const std::shared_ptr<Data>& data)
-        : _data(data)
-    { }
-
-    std::size_t operator*() const
-    {
-        return _data->count;
-    }
-
-    operator std::size_t() const
-    {
-        return **this;
-    }
-
-    MultiFlag help(std::string helpMessage)
-    {
-        _data->help = std::move(helpMessage);
-        return *this;
-    }
-
-private:
-    std::shared_ptr<Data> _data;
-};
-
 template <class T>
-class Value {
+T parseValue(const std::string& string)
+{
+    // TODO: parse strings with spaces
+    T value;
+    std::istringstream{string} >> value;
+    return value;
+}
+
+class ArgumentBase {
 public:
-    struct Data final : ArgumentData {
-        void parse(ArgumentStream& stream, Errors& error) override
-        {
-            if (stream.empty()) {
-                error << "no value for argument: " << fullName << "\n";
-                return;
+    virtual ~ArgumentBase() {}
+
+    virtual std::string_view help() const = 0;
+    virtual void help(std::string_view helpString) = 0;
+
+    virtual std::string_view metavar() const = 0;
+    virtual void metavar(std::string_view metavarString) = 0;
+
+    virtual bool required() const = 0;
+    virtual void required(bool isRequired) = 0;
+
+    virtual void raise() = 0;
+    virtual void parse(std::string_view value) = 0;
+};
+
+template <class T, bool Multi, bool Flag>
+class Argument : public ArgumentBase {
+public:
+    const auto& keys() const
+    {
+        return _data->keys;
+    }
+
+    void addKey(std::string key)
+    {
+        _data->keys.push_back(key);
+    }
+
+    std::string_view help() const override
+    {
+        return _data->help;
+    }
+
+    void help(std::string_view helpString) override
+    {
+        _data->help = helpString;
+    }
+
+    std::string_view metavar() const override
+    {
+        return _data->metavar;
+    }
+
+    void metavar(std::string_view metavarString) override
+    {
+        _data->metavar = metavarString;
+    }
+
+    bool required() const override
+    {
+        return _data->required;
+    }
+
+    void required(bool isRequired) override
+    {
+        _data->required = isRequired;
+    }
+
+    void raise() override
+    {
+        if constexpr (Flag) {
+            if constexpr (Multi) {
+                _data->values++;
+            } else {
+                _data->values = true;
             }
-            value = util::parseValue<T>(stream.pop());
+        } else {
+            // TODO: report error
         }
+    }
 
-        bool needsArguments() const override
-        {
-            return true;
+    void parse(std::string_view value) override
+    {
+        if constexpr (!Flag) {
+            if constexpr (Multi) {
+                _data->values.push_back(parseValue<T>(std::string{value}));
+            } else {
+                _data->values = parseValue<T>(std::string{value});
+            }
+        } else {
+            // TODO: report error
         }
+    }
 
-        std::optional<T> value;
-    };
-
-    Value(std::shared_ptr<Data> data)
-        : _data(std::move(data))
-    { }
-
+    template <bool U = Multi, class = std::enable_if_t<!U>>
     const T& operator*() const
     {
-        return _data->value;
+        return *_data->values;
     }
 
+    template <bool U = Multi, class = std::enable_if_t<!U>>
     operator const T&() const
     {
-        return **this;
-    }
-
-    Value required()
-    {
-        _data->required = true;
         return *this;
     }
 
-    Value help(std::string helpMessage)
+    template <bool U = Multi, class = std::enable_if_t<U>>
+    auto begin() const noexcept
     {
-        _data->help = std::move(helpMessage);
-        return *this;
+        return _data->values.begin();
+    }
+
+    template <bool U = Multi, class = std::enable_if_t<U>>
+    auto begin() noexcept
+    {
+        return _data->values.begin();
+    }
+
+    template <bool U = Multi, class = std::enable_if_t<U>>
+    auto end() const noexcept
+    {
+        return _data->values.end();
+    }
+
+    template <bool U = Multi, class = std::enable_if_t<U>>
+    auto end() noexcept
+    {
+        return _data->values.end();
     }
 
 private:
-    std::shared_ptr<Data> _data;
-};
-
-template <class T>
-class MultiValue {
-public:
-    struct Data final : ArgumentData {
-        void parse(ArgumentStream& stream, Errors& error) override
-        {
-            if (stream.empty()) {
-                error << "no value for argument: " << fullName << "\n";
-                return;
-            }
-            values.push_back(util::parseValue<T>(stream.pop()));
-        }
-
-        bool needsArguments() const override
-        {
-            return true;
-        }
-
-        bool multi() const override
-        {
-            return true;
-        }
-
-        std::vector<T> values;
+    struct Data {
+        std::vector<std::string> keys;
+        std::string help = "help message";
+        std::string metavar = "VALUE";
+        bool required = false;
+        std::conditional_t<Multi, std::vector<T>, std::optional<T>> values;
     };
 
-    MultiValue(std::shared_ptr<Data> data)
-        : _data(std::move(data))
-    { }
-
-    const std::vector<T>& operator*() const
-    {
-        return _data->values;
-    }
-
-    operator const std::vector<T>&() const
-    {
-        return **this;
-    }
-
-    MultiValue help(std::string helpMessage)
-    {
-        _data->help = std::move(helpMessage);
-        return *this;
-    }
-
-private:
-    std::shared_ptr<Data> _data;
+    std::shared_ptr<Data> _data = std::make_shared<Data>();
 };
 
 } // namespace arg

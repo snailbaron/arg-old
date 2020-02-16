@@ -23,9 +23,9 @@ namespace arg {
 class Parser {
 public:
     template <class... Flags>
-    Flag flag(Flags&&... flags)
+    Value<bool> flag(Flags&&... flags)
     {
-        return addKeyArgument<Flag>(std::forward<Flags>(flags)...);
+        return addKeyArgument<Value<bool>>(std::forward<Flags>(flags)...);
     }
 
     template <class... Flags>
@@ -79,10 +79,7 @@ public:
         ((_helpFlags.insert(std::forward<Flags>(flags))), ...);
     }
 
-    void parse(std::vector<std::string> args)
-    {
-        parse(ArgumentStream(std::move(args)));
-    }
+    void parse(const std::vector<std::string>& args);
 
     template <class Container = std::initializer_list<std::string>>
     void parse(const Container& args)
@@ -195,60 +192,6 @@ private:
         }
     }
 
-    void parse(ArgumentStream args)
-    {
-        // TODO: check that there are no required values after optional ones at
-        // the moment of parsing
-
-        while (!args.empty()) {
-            if (_helpFlags.count(args.front())) {
-                printUsage();
-                std::exit(0);
-            }
-
-            if (auto it = _keyData.find(args.front()); it != _keyData.end()) {
-                it->second->parse(args.shift(), _err);
-                continue;
-            }
-
-            auto unmergedFlags = util::splitFlagMerge(_flagPrefix, args.front());
-            if (isFlagMerge(unmergedFlags)) {
-                args.shift();
-                for (const auto& flag : unmergedFlags) {
-                    _keyData.at(flag)->parse(args, _err);
-                }
-                continue;
-            }
-
-            auto keyValue = util::splitKeyValue(_keyValueSeparator, args.front());
-            if (keyValue) {
-                if (auto it = _keyData.find(keyValue.key); it != _keyData.end()) {
-                    if (it->second->needsArguments()) {
-                        args.replace(std::move(keyValue.value));
-                        it->second->parse(args, _err);
-                        continue;
-                    }
-                }
-            }
-
-            if (_position < _positionalData.size()) {
-                _positionalData.at(_position++)->parse(args, _err);
-                continue;
-            }
-
-            if (_captor) {
-                _captor->parse(args, _err);
-                continue;
-            }
-
-            _leftovers.push_back(args.pop());
-        }
-
-        if (_err) {
-            std::exit(1);
-        }
-    }
-
     bool isFlagMerge(const std::vector<std::string>& flags) const
     {
         if (flags.empty()) {
@@ -288,7 +231,7 @@ private:
 Parser globalParser;
 
 template <class... Ts>
-Flag flag(Ts&&... args)
+Value<bool> flag(Ts&&... args)
 {
     return globalParser.flag(std::forward<Ts>(args)...);
 }
